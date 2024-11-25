@@ -1,8 +1,40 @@
-import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+import streamlit as st
 
 st.set_page_config(page_title="401(k) Growth Visualizer", layout="wide")
+
+# IRS Uniform Lifetime Table for RMD calculations
+uniform_lifetime_table = {
+    73: 26.5,
+    74: 25.5,
+    75: 24.6,
+    76: 23.7,
+    77: 22.9,
+    78: 22.0,
+    79: 21.1,
+    80: 20.2,
+    81: 19.4,
+    82: 18.5,
+    83: 17.7,
+    84: 16.8,
+    85: 16.0,
+    86: 15.2,
+    87: 14.4,
+    88: 13.7,
+    89: 12.9,
+    90: 12.2,
+    91: 11.5,
+    92: 10.8,
+    93: 10.1,
+    94: 9.5,
+    95: 8.9,
+    96: 8.4,
+    97: 7.8,
+    98: 7.3,
+    99: 6.8,
+    100: 6.4,
+}
 
 
 def calculate_401k_growth(
@@ -10,46 +42,57 @@ def calculate_401k_growth(
     annual_contributions,
     retirement_age,
     current_age,
+    withdrawal_rate,
+    enable_rmd,
     growth_rate_aggressive,
     growth_rate_conservative,
 ):
     balance = round(initial_balance)
     annual_data = []
+    withdrawals = []
 
     for i, contribution in enumerate(annual_contributions):
-        balance += contribution
+        age = current_age + i
 
-        # Determine growth rate: Aggressive or Conservative
-        if current_age + i + 5 <= retirement_age:
+        # Add contributions until retirement age
+        if age <= retirement_age:
+            balance += contribution
+
+        # Apply growth rate
+        if age + 5 <= retirement_age:
             balance *= 1 + growth_rate_aggressive / 100
         else:
             balance *= 1 + growth_rate_conservative / 100
 
-        balance = round(balance)  # Round to nearest integer
-        annual_data.append(balance)
+        # Calculate withdrawal rate amount
+        withdrawal = 0
+        if age >= retirement_age:
+            withdrawal = balance * (withdrawal_rate / 100)
 
-    return annual_data
+        # Apply RMD if enabled and the user is 73 or older
+        if enable_rmd and age >= 73:
+            if age in uniform_lifetime_table:
+                rmd = balance / uniform_lifetime_table[age]
+
+                # Adjust withdrawal to meet RMD if it's less than RMD
+                if withdrawal < rmd:
+                    withdrawal = rmd
+
+        # Deduct the withdrawal from the balance
+        balance -= withdrawal
+        balance = max(balance, 0)  # Prevent negative balances
+
+        # Record data
+        annual_data.append(round(balance))
+        withdrawals.append(round(withdrawal))
+
+    return annual_data, withdrawals
 
 
 def get_max_contribution_by_year(year, age):
-    """
-    Calculate the maximum allowed contribution for a given year and age.
-    Starts at $23,000 in 2024 and increases by $500 each subsequent year.
-    Includes a catch-up contribution of $7,500 for ages 50 and older.
-    """
     base_contribution = 23000 + (year - 2024) * 500
     catch_up = 7500 if age >= 50 else 0
     return base_contribution + catch_up
-
-
-def highlight_row(row):
-    """
-    Highlight the row for the year before retirement and multiples of 10.
-    """
-    if row["Age"] == retirement_age - 1 or row["Age"] % 10 == 0:
-        return ["background-color: #f4f4a3; font-weight: bold"] * len(row)
-    else:
-        return [""] * len(row)
 
 
 # Streamlit UI
@@ -59,7 +102,7 @@ st.markdown(
 )
 st.sidebar.header("🛠️ Configure Your Inputs")
 
-# Configure inputs in the specified order
+# Configure inputs
 current_age = st.sidebar.slider("🧑 Current Age", 22, 65, 40)
 retirement_age = st.sidebar.slider("🏖️ Retirement Age", current_age, 100, 65)
 
@@ -73,7 +116,6 @@ if use_max_contribution:
         "✨ **Catch-up Contributions:** $7,500 are included for users aged 50 or older when 'Use IRS Max Contribution' is selected."
     )
 
-# Annual Contribution Logic
 if use_max_contribution:
     years_to_project = list(range(2024, 2024 + (101 - current_age)))
     annual_contributions = [
@@ -107,7 +149,6 @@ else:
         )
     ] * len(annual_contributions)
 
-# Add company match to contributions
 annual_contributions = [
     contribution + match
     for contribution, match in zip(annual_contributions, company_match)
@@ -125,65 +166,53 @@ growth_rate_aggressive = st.sidebar.slider(
 growth_rate_conservative = st.sidebar.slider(
     "🛡️ Conservative Growth Rate (%)", 0.0, 10.0, 4.0, 0.5
 )
-st.sidebar.info(
-    "🛡️ **Conservative Growth Rate**: Applied starting 5 years prior to the selected retirement age."
+
+# Withdrawal Rates
+st.sidebar.markdown("### 💵 Post-Retirement Withdrawals")
+withdrawal_rate = st.sidebar.slider(
+    "💸 Annual Withdrawal Rate (%)", 0.0, 10.0, 5.0, 0.5
 )
 
-# Calculate growth
-balances = calculate_401k_growth(
+# Enable RMD Options
+enable_rmd = st.sidebar.checkbox("Enable RMD (Required Minimum Distribution)")
+st.sidebar.info(
+    "🛡️ **RMD Information:** Based on IRS Uniform Lifetime Table starting at age 73. "
+    "Roth 401(k)s are exempt from RMD requirements."
+)
+
+# Calculate balances and withdrawals
+balances, withdrawals = calculate_401k_growth(
     initial_balance,
     annual_contributions,
     retirement_age,
     current_age,
+    withdrawal_rate,
+    enable_rmd,
     growth_rate_aggressive,
     growth_rate_conservative,
 )
 
-# Create a concise table with "Age", "End of Year Balance", and "Annual Contribution" columns
+# Prepare age range and table
 ages_to_project = list(range(current_age, 101))
-contribution_table = pd.DataFrame(
-    {
-        "Age": ages_to_project,
-        "End of Year Balance ($)": balances,
-        "Annual Contribution ($)": annual_contributions,
-    }
-)
 
-# Calculate balance at retirement
-balance_at_retirement = balances[retirement_age - current_age - 1]
-
-# Format columns as integers with commas
-contribution_table["End of Year Balance ($)"] = contribution_table[
-    "End of Year Balance ($)"
-].apply(lambda x: f"{x:,}")
-contribution_table["Annual Contribution ($)"] = contribution_table[
-    "Annual Contribution ($)"
-].apply(lambda x: f"{x:,}")
-
-# Highlight rows for significant ages
-styled_contribution_table = contribution_table.style.apply(highlight_row, axis=1)
-
-# Enhanced Interactive Plot with Plotly (Highlight Significant Ages)
-fig = go.Figure()
-
-fig.add_trace(
-    go.Scatter(
+# Plot balances
+fig_balances = go.Figure()
+fig_balances.add_trace(
+    go.Bar(
         x=ages_to_project,
         y=balances,
-        mode="lines+markers",
         name="401(k) Balance",
-        line=dict(color="blue", width=2),
-        marker=dict(size=6),
+        marker_color="blue",
         hovertemplate="Age: %{x}<br>Balance: $%{y:,.0f}<extra></extra>",
     )
 )
 
-# Highlight the year before retirement and multiples of 10
-significant_ages = [retirement_age - 1] + [
-    age for age in ages_to_project if age % 10 == 0
+# Highlight significant years
+significant_ages = [
+    age for age in ages_to_project if age % 10 == 0 or age == retirement_age - 1
 ]
 for age in significant_ages:
-    fig.add_shape(
+    fig_balances.add_shape(
         type="rect",
         x0=age - 0.5,
         x1=age + 0.5,
@@ -194,11 +223,12 @@ for age in significant_ages:
         layer="below",
     )
 
-# Beautify the plot
-fig.update_layout(
+# Beautify chart layout
+fig_balances.update_layout(
+    title="401(k) Balance Over Time",
     xaxis=dict(title="Age", showgrid=True, zeroline=False, tickmode="linear", dtick=5),
     yaxis=dict(
-        title="End of Year Balance ($)",
+        title="Balance ($)",
         showgrid=True,
         zeroline=False,
         tickprefix="$",
@@ -209,11 +239,119 @@ fig.update_layout(
     margin=dict(l=40, r=40, t=50, b=40),
 )
 
-st.plotly_chart(fig, use_container_width=True)
+# Plot withdrawals
+fig_withdrawals = go.Figure()
+fig_withdrawals.add_trace(
+    go.Bar(
+        x=ages_to_project[ages_to_project.index(retirement_age) :],
+        y=withdrawals[ages_to_project.index(retirement_age) :],
+        name="Withdrawals",
+        marker_color="orange",
+        hovertemplate="Age: %{x}<br>Withdrawals: $%{y:,.0f}<extra></extra>",
+    )
+)
 
-# Display balance at retirement
+fig_withdrawals.update_layout(
+    title="Withdrawals Over Time",
+    xaxis=dict(title="Age", showgrid=True, zeroline=False, tickmode="linear", dtick=5),
+    yaxis=dict(
+        title="Withdrawals ($)",
+        showgrid=True,
+        zeroline=False,
+        tickprefix="$",
+        tickformat=",",
+    ),
+    template="plotly_white",
+    hovermode="x",
+    margin=dict(l=40, r=40, t=50, b=40),
+)
+
+# Display the balance chart
+st.plotly_chart(fig_balances, use_container_width=True)
+
+# Show balance at retirement
+balance_at_retirement = balances[retirement_age - current_age - 1]
 st.markdown(f"### 🏆 Balance at Retirement: **${balance_at_retirement:,}**")
 
-# Display contribution and balance table in a collapsible section
-with st.expander("📊 401(k) Contributions and Balances Over Time", expanded=False):
+# Conditionally display the withdrawals chart
+if withdrawal_rate > 0 or enable_rmd:
+    fig_withdrawals = go.Figure()
+    fig_withdrawals.add_trace(
+        go.Bar(
+            x=ages_to_project[ages_to_project.index(retirement_age) :],
+            y=withdrawals[ages_to_project.index(retirement_age) :],
+            name="Withdrawals",
+            marker_color="orange",
+            hovertemplate="Age: %{x}<br>Withdrawals: $%{y:,.0f}<extra></extra>",
+        )
+    )
+
+    fig_withdrawals.update_layout(
+        title="Withdrawals Over Time (Bar Chart)",
+        xaxis=dict(
+            title="Age", showgrid=True, zeroline=False, tickmode="linear", dtick=5
+        ),
+        yaxis=dict(
+            title="Withdrawals ($)",
+            showgrid=True,
+            zeroline=False,
+            tickprefix="$",
+            tickformat=",",
+        ),
+        template="plotly_white",
+        hovermode="x",
+        margin=dict(l=40, r=40, t=50, b=40),
+    )
+
+    st.plotly_chart(fig_withdrawals, use_container_width=True)
+
+# Show contributions, balances, and withdrawals in a collapsible table
+contribution_table = pd.DataFrame(
+    {
+        "Age": ages_to_project,
+        "End of Year Balance ($)": balances,
+        "Annual Contribution ($)": annual_contributions,
+        "Withdrawals ($)": withdrawals,
+    }
+)
+
+# Format table columns
+contribution_table["End of Year Balance ($)"] = contribution_table[
+    "End of Year Balance ($)"
+].apply(lambda x: f"{x:,}")
+contribution_table["Annual Contribution ($)"] = contribution_table[
+    "Annual Contribution ($)"
+].apply(lambda x: f"{x:,}")
+contribution_table["Withdrawals ($)"] = contribution_table["Withdrawals ($)"].apply(
+    lambda x: f"{x:,}"
+)
+
+# Highlight significant rows in the table
+styled_contribution_table = contribution_table.style.apply(
+    lambda row: (
+        ["background-color: #f4f4a3; font-weight: bold"] * len(row)
+        if row["Age"] in significant_ages
+        else [""] * len(row)
+    ),
+    axis=1,
+)
+
+# Collapsible section for the table
+with st.expander("📊 401(k) Contributions, Balances, and Withdrawals", expanded=False):
     st.dataframe(styled_contribution_table, use_container_width=True, hide_index=True)
+
+# Streamlit UI for RMD Table
+with st.expander("📑 IRS Uniform Lifetime Table for RMD", expanded=False):
+    rmd_table = pd.DataFrame.from_dict(
+        uniform_lifetime_table, orient="index", columns=["Divisor"]
+    )
+    rmd_table.index.name = "Age"
+    rmd_table.reset_index(inplace=True)
+    st.markdown(
+        "The table below shows the IRS uniform lifetime divisors used to calculate RMDs:"
+    )
+    st.dataframe(
+        rmd_table.style.format({"Divisor": "{:.1f}"}),
+        use_container_width=True,
+        hide_index=True,
+    )
