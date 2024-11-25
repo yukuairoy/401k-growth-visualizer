@@ -6,6 +6,7 @@ st.set_page_config(page_title="401(k) Growth Visualizer", layout="wide")
 
 # IRS Uniform Lifetime Table for RMD calculations
 uniform_lifetime_table = {
+    72: 27.4,
     73: 26.5,
     74: 25.5,
     75: 24.6,
@@ -69,8 +70,8 @@ def calculate_401k_growth(
         if age >= retirement_age:
             withdrawal = balance * (withdrawal_rate / 100)
 
-        # Apply RMD if enabled and the user is 73 or older
-        if enable_rmd and age >= 73:
+        # Apply RMD if enabled and the user is 72 or older
+        if enable_rmd and age >= 72:
             if age in uniform_lifetime_table:
                 rmd = balance / uniform_lifetime_table[age]
 
@@ -176,7 +177,7 @@ withdrawal_rate = st.sidebar.slider(
 # Enable RMD Options
 enable_rmd = st.sidebar.checkbox("Enable RMD (Required Minimum Distribution)")
 st.sidebar.info(
-    "🛡️ **RMD Information:** Based on IRS Uniform Lifetime Table starting at age 73. "
+    "🛡️ **RMD Information:** Based on IRS Uniform Lifetime Table starting at age 72. "
     "Roth 401(k)s are exempt from RMD requirements."
 )
 
