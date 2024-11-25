@@ -11,21 +11,33 @@ The **401(k) Growth Visualizer** is a [Streamlit-based app](https://401k-growth.
   - Example: At age 73 with $100,000 balance, RMD = $100,000 ÷ 26.5 ≈ $3,774.
   - **Source:** [IRS Publication 590-B](https://www.irs.gov/pub/irs-pdf/p590b.pdf)
 
-## How to Use 🛠️
-1. Install Python 3.7+.
-2. Install dependencies:
+## Demo 🎥
+Try the live demo at: https://401k-growth.streamlit.app/
+
+## Prerequisites 📋
+- Python 3.7+
+- Dependencies: `streamlit`, `pandas`, `plotly`
+
+## Installation & Setup 🛠️
+1. Install dependencies:
    ```bash
-   pip install streamlit pandas plotly
+   pip install -r requirements.txt
    ```
-3. Clone the repository:
+2. Clone the repository:
    ```bash
    git clone https://github.com/yukuairoy/401k-growth-visualizer.git
    ```
-4. Navigate to the directory:
+3. Navigate to the directory:
    ```bash
    cd 401k-growth-visualizer
    ```
-5. Run the app:
+4. Run the app:
    ```bash
    streamlit run app.py
    ```
+
+## Contributing 🤝
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## License 📄
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
