@@ -241,6 +241,10 @@ for i, age in enumerate(key_ages):
         else:
             st.metric(f"Balance at {age}", "N/A")
 
+st.write(
+    "[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/T6T416OJAV)"
+)
+
 st.divider()
 
 # Chart for balances
